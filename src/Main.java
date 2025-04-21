@@ -1,50 +1,64 @@
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 public class Main {
+    public static final int QUEUE_SIZE = 100;
+    public static final int TEXT_QUANTITY = 10_000;
+    public static final int TEXT_SIZE = 100_000;
+    public static final List<BlockingQueue<String>> queues = Arrays.asList(
+            new ArrayBlockingQueue<>(QUEUE_SIZE),
+            new ArrayBlockingQueue<>(QUEUE_SIZE),
+            new ArrayBlockingQueue<>(QUEUE_SIZE)
+    );
 
-    public static ArrayBlockingQueue abqA = new ArrayBlockingQueue(100);
-    public static ArrayBlockingQueue abqB = new ArrayBlockingQueue(100);
-    public static ArrayBlockingQueue abqC = new ArrayBlockingQueue(100);
-
-    public static void main(String[] args) {
-
-        new Thread(() -> {
-            String s3 = generateText("abc", 3);
-            int x = 0;
-            for (int i = 0; i < s3.length(); i++) {
-                if (s3.charAt(i) == 'a') {
-                    x++;
+    public static void main(String[] args) throws InterruptedException {
+        Thread producer = new Thread(() -> {
+            for (int i = 0; i < TEXT_QUANTITY; i++) {
+                String s = generateText("abc", TEXT_SIZE);
+                try {
+                    for (BlockingQueue<String> queue : queues) {
+                        queue.put(s);
+                    }
+                } catch (InterruptedException e) {
+                    return;
                 }
             }
-            abqA.offer(x);
-        }).start();
-
-        new Thread(() -> {
-            String s3 = generateText("abc", 3);
-            int x = 0;
-            for (int i = 0; i < s3.length(); i++) {
-                if (s3.charAt(i) == 'b') {
-                    x++;
+        });
+        producer.start();
+        List<Thread> consumers = new ArrayList<>();
+        for (int i = 0; i < queues.size(); i++) {
+            int idx = i;
+            char c = (char) ('a' + i);
+            Thread consumer = new Thread(() -> {
+                BlockingQueue<String> queue = queues.get(idx);
+                String maxString = "";
+                long maxCount = 0;
+                for (int j = 0; j < TEXT_QUANTITY; j++) {
+                    try {
+                        String s = queue.take();
+                        long count = countChar(s, c);
+                        if (count > maxCount) {
+                            maxCount = count;
+                            maxString = s;
+                        }
+                    } catch (InterruptedException e) {
+                        return;
+                    }
                 }
-            }
-            abqB.offer(x);
-        }).start();
-
-        new Thread(() -> {
-            String s3 = generateText("abc", 3);
-            int x = 0;
-            for (int i = 0; i < s3.length(); i++) {
-                if (s3.charAt(i) == 'c') {
-                    x++;
-                }
-            }
-            abqC.offer(x);
-        }).start();
-
-        System.out.println(abqA);
-        System.out.println(abqB);
-        System.out.println(abqC);
+                System.out.printf("Max count of letter %c - %d - found in the following string: " +
+                        "%s\n", c, maxCount, maxString.substring(0, 75) + "...");
+            });
+            consumer.start();
+            consumers.add(consumer);
+        }
+        for (Thread consumer : consumers) {
+            consumer.join();
+        }
+// no need to wait for producer, it should have returned before any of the consumers
     }
 
     public static String generateText(String letters, int length) {
@@ -54,5 +68,9 @@ public class Main {
             text.append(letters.charAt(random.nextInt(letters.length())));
         }
         return text.toString();
+    }
+
+    private static long countChar(String s, char target) {
+        return s.chars().filter(c -> c == target).count();
     }
 }
